@@ -64,7 +64,7 @@
   }
   setSizes();
   addEventListener("resize", setSizes);
-
+  const badSources = new Set();
   function tryImageSources(imgID, png, thumbSrc) {
     const prefix = imgID.slice(0, 2);
     const base = imgID.split(".")[0];
@@ -72,7 +72,7 @@
     const j = `https://w.wallhaven.cc/full/${prefix}/wallhaven-${base}.jpg`;
     const w = `https://w.wallhaven.cc/full/${prefix}/wallhaven-${base}.webp`;
     const s = `https://th.wallhaven.cc/small/${prefix}/wallhaven-${base}.jpg`;
-    let sources = png ? [p, j, w, s] : [j, p, w, s];
+    let sources = png ? [p, j, w, s] : [j, w, p, s];
 
     img.src = thumbSrc;
     img.style.filter = "blur(8px)";
@@ -87,11 +87,15 @@
 
     highRes.onerror = () => {
       // fallback next source
-      if (sources.length > 0) {
-        highRes.src = sources.shift();
-      } else {
-        img.style.display = "none";
+      badSources.add(highRes.src);
+      while (sources.length > 0) {
+        let src = sources.shift();
+        if (!badSources.has(src)) {
+          highRes.src = src;
+          return;
+        }
       }
+      img.style.display = "none";
     };
 
     highRes.src = sources.shift();
@@ -136,10 +140,15 @@
     }
   };
   const follow = throttle(followRaw, 100);
+  let mouseX = 0;
+  let mouseY = 0;
   body.addEventListener("mousemove", (event) => {
-    if (toggle) {
-      follow(event, 100);
+    if (!toggle) {
+      return;
     }
+    mouseX = event.clientX;
+    mouseY = event.clientY;
+    follow(event, 100);
   });
   function hidePopover() {
     popover.hidePopover();
@@ -161,16 +170,25 @@
 
     const isPNG = !!el.querySelector("span.png");
     const imgID = thumbImg.getAttribute("data-src").split("/").at(-1);
-    el.addEventListener("mouseenter", (event) => {
-      if (!toggle) {
-        return;
-      }
-      followRaw(event);
+    const timeoutIDS = new Set();
+    el.addEventListener("mouseenter", () => {
+      const timeoutid = setTimeout(() => {
+        timeoutIDS.delete(timeoutid);
+        if (!toggle) {
+          return;
+        }
+        followRaw({
+          clientX: mouseX,
+          clientY: mouseY,
+        });
 
-      tryImageSources(imgID, isPNG, thumbImg);
-      showPopover(imgID);
+        tryImageSources(imgID, isPNG, thumbImg);
+        showPopover(imgID);
+      }, 300);
+      timeoutIDS.add(timeoutid);
     });
     el.addEventListener("mouseleave", () => {
+      timeoutIDS.forEach((id) => clearTimeout(id));
       hidePopover();
     });
   }
